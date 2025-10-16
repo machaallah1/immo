@@ -1,16 +1,26 @@
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+// src/app/page.tsx
+import { Header } from "@/components/layout/Header"
+import { Footer } from "@/components/layout/Footer"
+import { HeroSection } from "@/components/sections/HeroSection"
+import { ServicesSection } from "@/components/sections/ServicesSection"
+import { FeaturesSection } from "@/components/sections/FeaturesSection"
+import { TestimonialsSection } from "@/components/sections/TestimonialsSection"
+import { CTASection } from "@/components/sections/CTASection"
+import { ContactSection } from "@/components/sections/ContactSection"
 
 export default function Home() {
   return (
-    <div className="flex flex-col items-center justify-center h-screen">
-      <Card>
-        <div className="p-4">
-          <h1 className="text-2xl font-bold">Home</h1>
-          <p className="text-gray-500">Home</p>
-          <Button className="mt-2">Button</Button>
-        </div>
-      </Card>
+    <div className="min-h-screen bg-white">
+      <Header />
+      <main>
+        <HeroSection />
+        <ServicesSection />
+        <FeaturesSection />
+        <TestimonialsSection />
+        <CTASection />
+        <ContactSection />
+      </main>
+      <Footer />
     </div>
-  );
+  )
 }
