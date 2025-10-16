@@ -1,0 +1,218 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  role      UserRole @default(TENANT)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner         Owner?
+  tenant        Tenant?
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Owner {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  firstName String
+  lastName  String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  properties Property[]
+
+  @@map("owners")
+}
+
+model Tenant {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  firstName String
+  lastName  String
+  phone     String?
+  cin       String?  // Numéro de carte d'identité
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rentals   Rental[]
+  payments  Payment[]
+
+  @@map("tenants")
+}
+
+model Property {
+  id          String      @id @default(cuid())
+  ownerId     String
+  name        String
+  address     String
+  city        String
+  type        PropertyType @default(HOUSE)
+  description String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relations
+  owner   Owner   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  rooms   Room[]
+
+  @@map("properties")
+}
+
+model Room {
+  id          String   @id @default(cuid())
+  propertyId  String
+  number      String
+  floor       Int?
+  area        Float?   // Surface en m²
+  price       Float    // Prix du loyer
+  description String?
+  isAvailable Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  property Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  rentals  Rental[]
+
+  @@map("rooms")
+}
+
+model Rental {
+  id          String   @id @default(cuid())
+  tenantId    String
+  roomId      String
+  startDate   DateTime
+  endDate     DateTime?
+  monthlyRent Float
+  deposit     Float    // Caution
+  status      RentalStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  room    Room    @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  payments Payment[]
+
+  @@unique([roomId])
+
+  @@map("rentals")
+}
+
+model Payment {
+  id          String        @id @default(cuid())
+  rentalId    String
+  tenantId    String
+  invoice     Invoice?
+  amount      Float
+  type        PaymentType   @default(RENT)
+  dueDate     DateTime
+  paidDate    DateTime?
+  status      PaymentStatus @default(PENDING)
+  method      PaymentMethod?
+  reference   String?       // Référence du paiement
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  rental Rental @relation(fields: [rentalId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  number      String   @unique
+  amount      Float
+  issueDate   DateTime @default(now())
+  pdfUrl      String?  // URL du PDF généré
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  paymentId   String   @unique
+
+  // Relations
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@map("invoices")
+}
+
+model Notification {
+  id          String           @id @default(cuid())
+  userId      String
+  type        NotificationType
+  title       String
+  message     String
+  isRead      Boolean          @default(false)
+  relatedId   String?          // ID de l'entité concernée
+  createdAt   DateTime         @default(now())
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+// Enums
+enum UserRole {
+  OWNER
+  TENANT
+  ADMIN
+}
+
+enum PropertyType {
+  HOUSE
+  APARTMENT
+  STUDIO
+}
+
+enum RentalStatus {
+  ACTIVE
+  ENDED
+  CANCELLED
+}
+
+enum PaymentType {
+  RENT
+  ELECTRICITY
+  WATER
+  INTERNET
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  MOBILE_MONEY
+  CREDIT_CARD
+}
+
+enum NotificationType {
+  RENT_REMINDER
+  BILL_REMINDER
+  PAYMENT_CONFIRMATION
+  DAMAGE_REPORT
+  GENERAL
+}
