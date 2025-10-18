@@ -1,42 +1,28 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { Toaster } from "react-hot-toast";
-import { AuthProvider } from "@/context/AuthContext";
-import AuthGuard from "@/components/auth/AuthGuard";
+// app/layout.tsx
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
+import { AuthProvider } from '@/context/AuthContext'
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'RHM - Rent House Management | Gestion Locative au Togo',
-  description: 'Plateforme de gestion locative simplifiée pour propriétaires et locataires à Lomé, Togo',
+  title: 'RHM - Rent House Management',
+  description: 'Plateforme de gestion locative au Togo',
 }
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: {
+  children: React.ReactNode
+}) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-         <Toaster />
+    <html lang="fr">
+      <body className={inter.className}>
         <AuthProvider>
-          <AuthGuard>
             {children}
-          </AuthGuard>
         </AuthProvider>
       </body>
     </html>
-  );
+  )
 }

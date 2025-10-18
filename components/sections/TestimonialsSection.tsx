@@ -7,21 +7,21 @@ const testimonials = [
   {
     name: "Koffi Mensah",
     role: "Propriétaire, Lomé",
-    image: "/avatars/koffi.jpg",
+    image: "/images/img1.jpg",
     content: "RHM a transformé ma façon de gérer mes 5 appartements. Les paiements automatiques et les rappels m'ont fait gagner un temps précieux.",
     rating: 5
   },
   {
     name: "Aïcha Diallo",
     role: "Locataire, Agoè",
-    image: "/avatars/aicha.jpg",
+    image: "/images/img2.jpg",
     content: "Enfin une plateforme moderne ! Je peux payer mon loyer en ligne et recevoir mes factures instantanément. Très pratique !",
     rating: 5
   },
   {
     name: "Jean Akakpo",
     role: "Gestionnaire, Bè",
-    image: "/avatars/jean.jpg",
+    image: "/images/img3.jpg",
     content: "La gestion des factures d'eau et d'électricité est devenue tellement simple. Mes locataires adorent l'application.",
     rating: 4
   }

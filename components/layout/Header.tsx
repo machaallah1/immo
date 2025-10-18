@@ -37,16 +37,17 @@ export function Header() {
           <NavigationMenuList>
             {navigationItems.map((item) => (
               <NavigationMenuItem key={item.name}>
-                <Link href={item.href} legacyBehavior passHref>
-                  <NavigationMenuLink 
-                    className={`px-4 py-2 text-sm font-medium transition-colors hover:text-primary ${
-                      pathname === item.href ? "text-primary" : "text-foreground/60"
-                    }`}
-                  >
-                    {item.name}
-                  </NavigationMenuLink>
-                </Link>
-              </NavigationMenuItem>
+  <NavigationMenuLink asChild>
+    <Link
+      href={item.href}
+      className={`px-4 py-2 text-sm font-medium transition-colors hover:text-primary ${
+        pathname === item.href ? "text-primary" : "text-foreground/60"
+      }`}
+    >
+      {item.name}
+    </Link>
+  </NavigationMenuLink>
+</NavigationMenuItem>
             ))}
           </NavigationMenuList>
         </NavigationMenu>

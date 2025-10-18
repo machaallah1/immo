@@ -16,12 +16,10 @@ const publicRoutes = [
   "/faq"
 ];
 
-// Routes protégées nécessitant une authentification
-const protectedRoutes = [
-  "/owner",
-  "/tenant",
-  "/dashboard"
-];
+// Routes par rôle
+const ownerRoutes = ["/owner/dashboard"];
+const tenantRoutes = ["/tenant/dashboard"];
+const adminRoutes = ["/admin/dashboard"];
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -47,16 +45,20 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
           pathname === route || pathname.startsWith(route + '/')
         );
         
-        const isProtectedRoute = protectedRoutes.some(route => 
+        const isOwnerRoute = ownerRoutes.some(route => 
           pathname.startsWith(route)
         );
-        const isAdminRoute = pathname.startsWith('/owner') || pathname.startsWith('/tenant');
+        
+        const isTenantRoute = tenantRoutes.some(route => 
+          pathname.startsWith(route)
+        );
+        
+        const isAdminRoute = adminRoutes.some(route => 
+          pathname.startsWith(route)
+        );
 
-        // LOGIQUE DE REDIRECTION AVEC VÉRIFICATION DES RÔLES
-
-        // 1. Si l'utilisateur n'est PAS connecté
+        const isProtectedRoute = isOwnerRoute || isTenantRoute || isAdminRoute;
         if (!session) {
-          // Bloquer l'accès aux routes protégées
           if (isProtectedRoute) {
             if (mounted) {
               router.push('/login');
@@ -70,43 +72,66 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
           return;
         }
 
-        // 2. Si l'utilisateur EST connecté
-        // Récupérer les données utilisateur depuis la base de données
         const dbUser = await getCurrentUser();
         
-        // VÉRIFICATION SPÉCIALE POUR LES ROUTES ADMIN
-        if (isAdminRoute) {
-          if (dbUser?.role !== 'ADMIN') {
-            // Rediriger vers dashboard si l'utilisateur n'est pas ADMIN
+        if (!dbUser) {
+          console.error('User not found in database');
+          if (mounted) {
+            router.push('/login');
+          }
+          return;
+        }
+
+        if (isProtectedRoute) {
+          let hasAccess = false;
+          
+          if (isOwnerRoute && dbUser.role === 'OWNER') hasAccess = true;
+          if (isTenantRoute && dbUser.role === 'TENANT') hasAccess = true;
+          if (isAdminRoute && dbUser.role === 'ADMIN') hasAccess = true;
+
+          if (!hasAccess) {
+            let redirectPath = '/admin/dashboard'; // Par défaut ADMIN
+            switch (dbUser.role) {
+              case 'ADMIN':
+                redirectPath = '/admin/dashboard';
+                break;
+              case 'OWNER':
+                redirectPath = '/owner/dashboard';
+                break;
+              case 'TENANT':
+                redirectPath = '/tenant/dashboard';
+                break;
+            }
+            
             if (mounted) {
-              router.push('/dashboard');
+              router.push(redirectPath);
             }
             return;
           }
-          // Autoriser l'accès admin
+        }
+
+        // Rediriger depuis login/register vers le dashboard approprié
+        if ((pathname === '/login' || pathname === '/register') && dbUser) {
+          let redirectPath = '/admin/dashboard'; // Par défaut ADMIN
+          switch (dbUser.role) {
+            case 'ADMIN':
+              redirectPath = '/admin/dashboard';
+              break;
+            case 'OWNER':
+              redirectPath = '/owner/dashboard';
+              break;
+            case 'TENANT':
+              redirectPath = '/tenant/dashboard';
+              break;
+          }
+          
           if (mounted) {
-            setLoading(false);
+            router.push(redirectPath);
           }
           return;
         }
-        
-        // Autoriser l'accès aux routes protégées (dashboard, etc.)
-        if (isProtectedRoute) {
-          if (mounted) {
-            setLoading(false);
-          }
-          return;
-        }
-        
-        // Rediriger vers dashboard si sur login/register
-        if (pathname === '/login' || pathname === '/register') {
-          if (mounted) {
-            router.push('/dashboard');
-          }
-          return;
-        }
-        
-        // Pour toutes les autres routes (y compris /), autoriser l'accès
+
+        // Autoriser l'accès
         if (mounted) {
           setLoading(false);
         }
@@ -122,21 +147,36 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     checkAuth();
 
     // Écouter les changements d'authentification
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
 
       try {
         if (event === 'SIGNED_OUT') {
           // Rediriger vers l'accueil après déconnexion
-          if (protectedRoutes.some(route => pathname.startsWith(route))) {
+          if (pathname.startsWith('/owner') || pathname.startsWith('/tenant') || pathname.startsWith('/admin')) {
             router.push('/');
           }
         }
         
-        if (event === 'SIGNED_IN') {
-          // Rediriger vers le dashboard après connexion
-          if (pathname === '/login' || pathname === '/register' || pathname === '/') {
-            router.push('/dashboard');
+        if (event === 'SIGNED_IN' && session) {
+          // Récupérer le rôle de l'utilisateur
+          const dbUser = await getCurrentUser();
+          if (dbUser) {
+            let redirectPath = '/admin/dashboard'; // Par défaut ADMIN
+            switch (dbUser.role) {
+              case 'ADMIN':
+                redirectPath = '/admin/dashboard';
+                break;
+              case 'OWNER':
+                redirectPath = '/owner/dashboard';
+                break;
+              case 'TENANT':
+                redirectPath = '/tenant/dashboard';
+                break;
+            }
+            if (pathname === '/login' || pathname === '/register' || pathname === '/') {
+              router.push(redirectPath);
+            }
           }
         }
       } catch (error) {
@@ -148,7 +188,7 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [pathname]);
+  }, [pathname, router]);
 
-  return children;
+return children;
 }

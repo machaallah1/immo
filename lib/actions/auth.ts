@@ -4,6 +4,32 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 
+// Types pour les permissions
+type UserRole = 'ADMIN' | 'OWNER' | 'TENANT';
+
+// Vérifier les permissions
+async function checkPermissions(currentUserId: string, allowedRoles: UserRole[], targetRole?: UserRole) {
+  const currentUser = await prisma.user.findUnique({
+    where: { id: currentUserId }
+  });
+
+  if (!currentUser) {
+    throw new Error('Utilisateur non trouvé');
+  }
+
+  // Vérifier si le rôle actuel est autorisé
+  if (!allowedRoles.includes(currentUser.role)) {
+    throw new Error('Permission refusée');
+  }
+
+  // Vérifier les restrictions de rôle pour les OWNER
+  if (currentUser.role === 'OWNER' && targetRole && targetRole !== 'TENANT') {
+    throw new Error('Les propriétaires ne peuvent créer que des locataires');
+  }
+
+  return currentUser;
+}
+
 // Effectue l'inscription Supabase + création de l'utilisateur en DB côté serveur
 export async function signUpAndCreateUser(formData: FormData) {
   'use server';
@@ -64,6 +90,7 @@ export async function signUpAndCreateUser(formData: FormData) {
     });
 
     revalidatePath('/admin/users');
+    revalidatePath('/owner/tenants');
     return { success: true };
   } catch (error: any) {
     console.error('signUpAndCreateUser error:', error);
@@ -71,47 +98,24 @@ export async function signUpAndCreateUser(formData: FormData) {
   }
 }
 
-export async function registerUser(id: string, email: string, firstName: string, lastName: string, phone: string) {
+// Créer un utilisateur avec gestion des permissions
+export async function createUser(formData: FormData, currentUserId?: string) {
   try {
-    const existingUser = await prisma.user.findUnique({
-      where: { email }
-    });
-
-    if (existingUser) {
-      return { success: false, error: "Un utilisateur avec cet email existe déjà" };
-    }
-
-    await prisma.user.create({
-      data: {
-        id,
-        email,
-        role: 'TENANT',
-        tenant: {
-          create: {
-            firstName,
-            lastName,
-            phone,
-          }
-        }
-      }
-    });
-
-    revalidatePath('/admin/users');
-    return { success: true };
-  } catch (error: any) {
-    console.error('Error creating user:', error);
-    return { success: false, error: error.message || "Erreur lors de la création de l'utilisateur" };
-  }
-}
-
-export async function createUser(formData: FormData) {
-  try {
-    const id = formData.get('id') as string || crypto.randomUUID();
     const email = formData.get('email') as string;
     const firstName = formData.get('firstName') as string;
     const lastName = formData.get('lastName') as string;
     const phone = formData.get('phone') as string;
-    const role = formData.get('role') as 'ADMIN' | 'OWNER' | 'TENANT';
+    const role = formData.get('role') as UserRole;
+
+    // Validation des champs obligatoires
+    if (!email || !firstName || !lastName || !phone || !role) {
+      return { error: "Tous les champs sont obligatoires" };
+    }
+
+    // Vérifier les permissions si currentUserId est fourni
+    if (currentUserId) {
+      await checkPermissions(currentUserId, ['ADMIN', 'OWNER'], role);
+    }
 
     const existingUser = await prisma.user.findUnique({
       where: { email }
@@ -122,7 +126,6 @@ export async function createUser(formData: FormData) {
     }
 
     let userData: any = {
-      id,
       email,
       role,
     };
@@ -144,13 +147,8 @@ export async function createUser(formData: FormData) {
           phone,
         }
       };
-    } else if (role === 'ADMIN') {
-      // Pour les admins, on ne crée pas de profil spécifique
-      userData = {
-        ...userData,
-        // Les admins n'ont pas de profil owner/tenant
-      };
     }
+    // Pour ADMIN, pas de profil spécifique
 
     const user = await prisma.user.create({
       data: userData,
@@ -161,6 +159,7 @@ export async function createUser(formData: FormData) {
     });
 
     revalidatePath('/admin/users');
+    revalidatePath('/owner/tenants');
     return { success: true, user };
   } catch (error: any) {
     console.error('Error creating user:', error);
@@ -168,13 +167,79 @@ export async function createUser(formData: FormData) {
   }
 }
 
-export async function updateUser(id: string, formData: FormData) {
+// Créer un locataire (spécifique pour les propriétaires)
+export async function createTenant(formData: FormData, ownerUserId: string) {
+  try {
+    // Vérifier que l'utilisateur est bien un propriétaire
+    await checkPermissions(ownerUserId, ['OWNER'], 'TENANT');
+
+    const email = formData.get('email') as string;
+    const firstName = formData.get('firstName') as string;
+    const lastName = formData.get('lastName') as string;
+    const phone = formData.get('phone') as string;
+
+    if (!email || !firstName || !lastName || !phone) {
+      return { error: "Tous les champs sont obligatoires" };
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (existingUser) {
+      return { error: "Un utilisateur avec cet email existe déjà" };
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        role: 'TENANT',
+        tenant: {
+          create: {
+            firstName,
+            lastName,
+            phone,
+          }
+        }
+      },
+      include: {
+        tenant: true,
+      }
+    });
+
+    revalidatePath('/owner/tenants');
+    return { success: true, user };
+  } catch (error: any) {
+    console.error('Error creating tenant:', error);
+    return { error: error.message || "Erreur lors de la création du locataire" };
+  }
+}
+
+// Mettre à jour un utilisateur avec gestion des permissions
+export async function updateUser(id: string, formData: FormData, currentUserId?: string) {
   try {
     const email = formData.get('email') as string;
     const firstName = formData.get('firstName') as string;
     const lastName = formData.get('lastName') as string;
     const phone = formData.get('phone') as string;
-    const role = formData.get('role') as 'ADMIN' | 'OWNER' | 'TENANT';
+    const role = formData.get('role') as UserRole;
+
+    // Vérifier les permissions si currentUserId est fourni
+    if (currentUserId) {
+      const currentUser = await checkPermissions(currentUserId, ['ADMIN', 'OWNER'], role);
+      
+      // Un OWNER ne peut modifier que ses propres locataires
+      if (currentUser.role === 'OWNER') {
+        const targetUser = await prisma.user.findUnique({
+          where: { id },
+          include: { tenant: true }
+        });
+        
+        if (!targetUser || targetUser.role !== 'TENANT') {
+          throw new Error('Permission refusée');
+        }
+      }
+    }
 
     // Vérifier si l'email existe déjà pour un autre utilisateur
     const existingUser = await prisma.user.findUnique({
@@ -199,7 +264,6 @@ export async function updateUser(id: string, formData: FormData) {
     // Mettre à jour le profil spécifique selon le rôle
     if (role === 'TENANT') {
       if (currentUser?.tenant) {
-        // Mettre à jour le tenant existant
         updateData.tenant = {
           update: {
             firstName,
@@ -208,7 +272,6 @@ export async function updateUser(id: string, formData: FormData) {
           }
         };
       } else {
-        // Créer un nouveau tenant
         updateData.tenant = {
           create: {
             firstName,
@@ -223,7 +286,6 @@ export async function updateUser(id: string, formData: FormData) {
       }
     } else if (role === 'OWNER') {
       if (currentUser?.owner) {
-        // Mettre à jour le owner existant
         updateData.owner = {
           update: {
             firstName,
@@ -232,7 +294,6 @@ export async function updateUser(id: string, formData: FormData) {
           }
         };
       } else {
-        // Créer un nouveau owner
         updateData.owner = {
           create: {
             firstName,
@@ -246,7 +307,7 @@ export async function updateUser(id: string, formData: FormData) {
         }
       }
     } else if (role === 'ADMIN') {
-      // Pour les admins, supprimer les profils spécifiques s'ils existent
+      // Pour les admins, supprimer les profils spécifiques
       if (currentUser?.tenant) {
         await prisma.tenant.delete({ where: { userId: id } });
       }
@@ -265,7 +326,8 @@ export async function updateUser(id: string, formData: FormData) {
     });
 
     revalidatePath('/admin/users');
-    revalidatePath('/profile');
+    revalidatePath('/owner/tenants');
+    revalidatePath('/owner/profile');
     return { success: true, user };
   } catch (error: any) {
     console.error('Error updating user:', error);
@@ -273,13 +335,31 @@ export async function updateUser(id: string, formData: FormData) {
   }
 }
 
-export async function deleteUser(id: string) {
+// Supprimer un utilisateur avec gestion des permissions
+export async function deleteUser(id: string, currentUserId?: string) {
   try {
+    // Vérifier les permissions si currentUserId est fourni
+    if (currentUserId) {
+      const currentUser = await checkPermissions(currentUserId, ['ADMIN', 'OWNER']);
+      
+      // Un OWNER ne peut supprimer que des locataires
+      if (currentUser.role === 'OWNER') {
+        const targetUser = await prisma.user.findUnique({
+          where: { id }
+        });
+        
+        if (!targetUser || targetUser.role !== 'TENANT') {
+          throw new Error('Permission refusée');
+        }
+      }
+    }
+
     await prisma.user.delete({
       where: { id }
     });
 
     revalidatePath('/admin/users');
+    revalidatePath('/owner/tenants');
     return { success: true };
   } catch (error: any) {
     console.error('Error deleting user:', error);
@@ -287,9 +367,25 @@ export async function deleteUser(id: string) {
   }
 }
 
-export async function getUsers() {
+// Obtenir tous les utilisateurs (avec filtrage pour OWNER)
+export async function getUsers(currentUserId?: string) {
   try {
+    let whereCondition: any = {};
+
+    // Si currentUserId est fourni, appliquer les filtres de permission
+    if (currentUserId) {
+      const currentUser = await prisma.user.findUnique({
+        where: { id: currentUserId }
+      });
+
+      // Un OWNER ne peut voir que les locataires
+      if (currentUser?.role === 'OWNER') {
+        whereCondition.role = 'TENANT';
+      }
+    }
+
     const users = await prisma.user.findMany({
+      where: whereCondition,
       include: {
         tenant: true,
         owner: true,
@@ -304,8 +400,21 @@ export async function getUsers() {
   }
 }
 
-export async function getUsersByRole(role: 'ADMIN' | 'OWNER' | 'TENANT') {
+// Obtenir les utilisateurs par rôle (avec permissions)
+export async function getUsersByRole(role: UserRole, currentUserId?: string) {
   try {
+    // Vérifier les permissions si currentUserId est fourni
+    if (currentUserId) {
+      const currentUser = await prisma.user.findUnique({
+        where: { id: currentUserId }
+      });
+
+      // Un OWNER ne peut voir que les locataires
+      if (currentUser?.role === 'OWNER' && role !== 'TENANT') {
+        return [];
+      }
+    }
+
     const users = await prisma.user.findMany({
       where: { role },
       include: {
@@ -322,8 +431,14 @@ export async function getUsersByRole(role: 'ADMIN' | 'OWNER' | 'TENANT') {
   }
 }
 
-export async function updateUserRole(id: string, role: 'ADMIN' | 'OWNER' | 'TENANT') {
+// Mettre à jour le rôle d'un utilisateur avec permissions
+export async function updateUserRole(id: string, role: UserRole, currentUserId?: string) {
   try {
+    // Vérifier les permissions si currentUserId est fourni
+    if (currentUserId) {
+      await checkPermissions(currentUserId, ['ADMIN', 'OWNER'], role);
+    }
+
     const currentUser = await prisma.user.findUnique({
       where: { id },
       include: { tenant: true, owner: true }
@@ -335,9 +450,9 @@ export async function updateUserRole(id: string, role: 'ADMIN' | 'OWNER' | 'TENA
     if (role === 'TENANT' && !currentUser?.tenant) {
       updateData.tenant = {
         create: {
-          firstName: 'Nouveau',
-          lastName: 'Locataire',
-          phone: '',
+          firstName: currentUser?.owner?.firstName || 'Nouveau',
+          lastName: currentUser?.owner?.lastName || 'Locataire',
+          phone: currentUser?.owner?.phone || '',
         }
       };
       if (currentUser?.owner) {
@@ -346,9 +461,9 @@ export async function updateUserRole(id: string, role: 'ADMIN' | 'OWNER' | 'TENA
     } else if (role === 'OWNER' && !currentUser?.owner) {
       updateData.owner = {
         create: {
-          firstName: 'Nouveau',
-          lastName: 'Propriétaire',
-          phone: '',
+          firstName: currentUser?.tenant?.firstName || 'Nouveau',
+          lastName: currentUser?.tenant?.lastName || 'Propriétaire',
+          phone: currentUser?.tenant?.phone || '',
         }
       };
       if (currentUser?.tenant) {
@@ -373,6 +488,7 @@ export async function updateUserRole(id: string, role: 'ADMIN' | 'OWNER' | 'TENA
     });
 
     revalidatePath('/admin/users');
+    revalidatePath('/owner/tenants');
     return { success: true, user };
   } catch (error: any) {
     console.error('Error updating user role:', error);
@@ -380,11 +496,13 @@ export async function updateUserRole(id: string, role: 'ADMIN' | 'OWNER' | 'TENA
   }
 }
 
+// Obtenir l'utilisateur courant
 export async function getCurrentUser() {
   try {
     const { createClient } = await import("@/lib/db/supabaseServer");
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
+    
     let userId = user?.id;
     if (!userId) {
       const { data: { session } } = await supabase.auth.getSession();
@@ -392,13 +510,64 @@ export async function getCurrentUser() {
     }
     if (!userId) return null;
 
-    const dbUser = await prisma.user.findUnique({
+    let dbUser = await prisma.user.findUnique({
       where: { id: userId },
       include: {
         tenant: true,
         owner: true,
       }
     });
+
+    if (!dbUser && user) {
+      // Vérifier si un utilisateur existe déjà avec cet email
+      const existingUser = await prisma.user.findUnique({
+        where: { email: user.email! },
+        include: {
+          tenant: true,
+          owner: true,
+        }
+      });
+
+      if (existingUser) {
+        console.log('User already exists with this email but different ID:', user.email);
+        // L'utilisateur existe avec le même email mais un ID différent
+        // Cela peut arriver si l'ID Supabase a changé
+        // On retourne l'utilisateur existant
+        dbUser = existingUser;
+      } else {
+        console.log('Creating user in database:', user.email);
+        
+        try {
+          dbUser = await prisma.user.create({
+            data: {
+              id: user.id,
+              email: user.email!,
+              role: 'TENANT', 
+            },
+            include: {
+              tenant: true,
+              owner: true,
+            }
+          });
+          
+          console.log('User created successfully:', dbUser.email);
+        } catch (createError: any) {
+          // Si la création échoue à cause d'un conflit, réessayer de récupérer l'utilisateur
+          if (createError.code === 'P2002') {
+            console.log('Conflict detected, fetching existing user');
+            dbUser = await prisma.user.findUnique({
+              where: { email: user.email! },
+              include: {
+                tenant: true,
+                owner: true,
+              }
+            });
+          } else {
+            throw createError;
+          }
+        }
+      }
+    }
 
     return dbUser;
   } catch (error) {
@@ -407,7 +576,7 @@ export async function getCurrentUser() {
   }
 }
 
-// Fonction pour obtenir le profil complet de l'utilisateur
+// Obtenir le profil utilisateur
 export async function getUserProfile(userId: string) {
   try {
     const user = await prisma.user.findUnique({

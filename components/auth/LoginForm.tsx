@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { supabase } from "@/lib/db/supabaseClient";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
@@ -10,18 +10,7 @@ export default function LoginForm() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
-    const [callbackUrl, setCallbackUrl] = useState("/dashboard");
     const router = useRouter();
-
-    useEffect(() => {
-        if (typeof window !== 'undefined') {
-            const urlParams = new URLSearchParams(window.location.search);
-            const url = urlParams.get("callbackUrl");
-            if (url) {
-                setCallbackUrl(decodeURIComponent(url));
-            }
-        }
-    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -32,13 +21,16 @@ export default function LoginForm() {
                 email,
                 password,
             });
+
             if (error) {
                 throw new Error(error.message);
             }
-            toast.success("Connexion réussie!");
-            router.push(callbackUrl);
+
+            toast.success("Connexion réussie! Redirection...");
+            router.push("/dashboard");
+            
         } catch (error: any) {
-            toast.error(error.message);
+            toast.error(error.message || "Erreur lors de la connexion");
         } finally {
             setLoading(false);
         }
@@ -46,10 +38,10 @@ export default function LoginForm() {
 
     return (
         <div className="max-w-md mx-auto bg-white p-8 rounded-lg shadow-md">
-            <h2 className="text-2xl font-bold text-dark mb-6">Connexion</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Connexion à RHM</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-dark">
+                    <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                         Email
                     </label>
                     <input
@@ -57,12 +49,12 @@ export default function LoginForm() {
                         id="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                         required
                     />
                 </div>
                 <div>
-                    <label htmlFor="password" className="block text-sm font-medium text-dark">
+                    <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                         Mot de passe
                     </label>
                     <input
@@ -70,28 +62,23 @@ export default function LoginForm() {
                         id="password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                         required
                     />
                 </div>
                 <button
                     type="submit"
                     disabled={loading}
-                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+                    className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                 >
-                    {loading ? "Connexion en cours..." : "Se connecter"}
+                    {loading ? "Connexion..." : "Se connecter"}
                 </button>
             </form>
             <div className="mt-4 text-center">
                 <p className="text-sm text-gray-600">
-                    Pas encore de compte?{" "}
-                    <Link href="/register" className="font-medium text-primary hover:text-primary-dark">
+                    Pas de compte ?{" "}
+                    <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
                         S'inscrire
-                    </Link>
-                </p>
-                <p className="text-sm text-gray-600 mt-2">
-                    <Link href="/forgot-password" className="font-medium text-primary hover:text-primary-dark">
-                        Mot de passe oublié?
                     </Link>
                 </p>
             </div>
