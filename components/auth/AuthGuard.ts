@@ -190,5 +190,5 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
     };
   }, [pathname, router]);
 
-return children;
+  return children;
 }
