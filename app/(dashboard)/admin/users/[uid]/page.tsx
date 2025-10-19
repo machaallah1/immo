@@ -21,7 +21,7 @@ import {
 export default function UserDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { fetchUsers, canManageUsers } = useUserManagement();
+  const { fetchUserProfile, canManageUsers } = useUserManagement();
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -31,9 +31,11 @@ export default function UserDetailPage() {
     loadUser();
   }, [userId]);
 
+  console.log("user",user)
+
   const loadUser = async () => {
     try {
-      const userData = await fetchUsers();
+      const userData = await fetchUserProfile(userId);
       setUser(userData);
     } catch (error) {
       console.error('Error loading user:', error);
